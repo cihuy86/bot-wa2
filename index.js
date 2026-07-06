@@ -58,14 +58,12 @@ async function handleMessage(sock, m) {
             mediaType = 'video';
             mediaBuffer = await sock.downloadMediaMessage(msg);
         } else if (msg.message.stickerMessage) {
-            // untuk antisticker
             content = '';
             mediaType = 'sticker';
         }
 
         if (!content && !mediaType) return;
 
-        // ------ COMMAND PARSING ------
         const parts = content.trim().split(/\s+/);
         const cmd = parts[0] ? parts[0].toLowerCase() : '';
         const params = parts.slice(1);
@@ -118,7 +116,6 @@ async function handleMessage(sock, m) {
                 return;
             }
             try {
-                // Gunakan Jimp untuk resize dan export webp
                 const image = await Jimp.read(mediaBuffer);
                 image.resize(512, 512, Jimp.RESIZE_BEZIER);
                 const stickerBuffer = await image.getBufferAsync(Jimp.MIME_WEBP);
@@ -337,7 +334,7 @@ async function handleMessage(sock, m) {
     }
 }
 
-// ==================== MAIN BOT ====================
+// ==================== MAIN BOT (diperbaiki) ====================
 async function startBot() {
     console.log('🔄 Memulai BOT WANGZ...');
     const auth = await useMultiFileAuthState('session');
@@ -348,27 +345,39 @@ async function startBot() {
         browser: Browsers.macOS('Chrome'),
     });
 
-    // Variable untuk menandai apakah pairing sudah diminta
-    let pairingRequested = false;
-
-    sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect } = update;
-        if (connection === 'open') {
-            console.log('✅ Koneksi terbuka.');
-            // Jika belum terdaftar dan belum minta pairing, minta pairing sekarang
-            if (!auth.state.creds.registered && !pairingRequested) {
-                pairingRequested = true;
-                const phone = await question('📱 Masukkan nomor WhatsApp (contoh: 6281234567890): ');
-                rl.close();
-                console.log('⏳ Meminta kode pairing...');
-                try {
-                    const code = await sock.requestPairingCode(phone);
-                    console.log(`🔑 Kode Pairing: ${code}`);
-                } catch (e) {
-                    console.error('Error request pairing code:', e);
-                }
+    // Tunggu koneksi terbuka
+    await new Promise((resolve) => {
+        sock.ev.once('connection.update', ({ connection }) => {
+            if (connection === 'open') {
+                resolve();
             }
-        } else if (connection === 'close') {
+        });
+    });
+
+    console.log('✅ Koneksi terbuka.');
+
+    // Jika belum terdaftar, minta pairing code
+    if (!auth.state.creds.registered) {
+        const phone = await question('📱 Masukkan nomor WhatsApp (contoh: 6281234567890): ');
+        rl.close();
+        console.log('⏳ Meminta kode pairing...');
+        try {
+            const code = await sock.requestPairingCode(phone);
+            console.log(`🔑 Kode Pairing: ${code}`);
+            console.log('⏳ Tunggu beberapa detik, bot akan otomatis login...');
+        } catch (e) {
+            console.error('Error request pairing code:', e);
+            console.log('❌ Gagal mendapatkan kode pairing. Coba lagi.');
+            process.exit(1);
+        }
+    } else {
+        console.log('✅ Sudah terdaftar, melanjutkan...');
+    }
+
+    // Event connection update untuk reconnect dll
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect } = update;
+        if (connection === 'close') {
             const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
             if (reason === DisconnectReason.loggedOut) {
                 console.log('🚫 Session logout, hapus folder session dan restart...');
@@ -378,6 +387,8 @@ async function startBot() {
                 console.log('🔄 Koneksi terputus, mencoba reconnect...');
                 startBot();
             }
+        } else if (connection === 'open') {
+            console.log('✅ Bot BOT WANGZ berhasil login!');
         }
     });
 
