@@ -348,17 +348,27 @@ async function startBot() {
         browser: Browsers.macOS('Chrome'),
     });
 
-    if (!auth.state.creds.registered) {
-        const phone = await question('📱 Masukkan nomor WhatsApp (contoh: 6281234567890): ');
-        rl.close();
-        console.log('⏳ Meminta kode pairing...');
-        const code = await sock.requestPairingCode(phone);
-        console.log(`🔑 Kode Pairing: ${code}`);
-    }
+    // Variable untuk menandai apakah pairing sudah diminta
+    let pairingRequested = false;
 
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update;
-        if (connection === 'close') {
+        if (connection === 'open') {
+            console.log('✅ Koneksi terbuka.');
+            // Jika belum terdaftar dan belum minta pairing, minta pairing sekarang
+            if (!auth.state.creds.registered && !pairingRequested) {
+                pairingRequested = true;
+                const phone = await question('📱 Masukkan nomor WhatsApp (contoh: 6281234567890): ');
+                rl.close();
+                console.log('⏳ Meminta kode pairing...');
+                try {
+                    const code = await sock.requestPairingCode(phone);
+                    console.log(`🔑 Kode Pairing: ${code}`);
+                } catch (e) {
+                    console.error('Error request pairing code:', e);
+                }
+            }
+        } else if (connection === 'close') {
             const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
             if (reason === DisconnectReason.loggedOut) {
                 console.log('🚫 Session logout, hapus folder session dan restart...');
@@ -368,8 +378,6 @@ async function startBot() {
                 console.log('🔄 Koneksi terputus, mencoba reconnect...');
                 startBot();
             }
-        } else if (connection === 'open') {
-            console.log('✅ Bot BOT WANGZ berhasil login!');
         }
     });
 
