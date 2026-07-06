@@ -3,7 +3,6 @@ const { Boom } = require('@hapi/boom');
 const fs = require('fs');
 const path = require('path');
 const moment = require('moment');
-const sharp = require('sharp');
 const Jimp = require('jimp');
 const axios = require('axios');
 const Pino = require('pino');
@@ -95,7 +94,6 @@ async function handleMessage(sock, m) {
         }
         else if (cmd === '.menu' || cmd === '.help') {
             if (params.length === 0) {
-                // Tombol kategori
                 const buttons = [
                     { buttonId: '.menu all', buttonText: { displayText: 'ALL' }, type: 1 },
                     { buttonId: '.menu owner', buttonText: { displayText: 'OWNER' }, type: 1 },
@@ -120,12 +118,13 @@ async function handleMessage(sock, m) {
                 return;
             }
             try {
-                const stickerBuffer = await sharp(mediaBuffer)
-                    .resize(512, 512, { fit: 'cover' })
-                    .webp()
-                    .toBuffer();
+                // Gunakan Jimp untuk resize dan export webp
+                const image = await Jimp.read(mediaBuffer);
+                image.resize(512, 512, Jimp.RESIZE_BEZIER);
+                const stickerBuffer = await image.getBufferAsync(Jimp.MIME_WEBP);
                 await sock.sendMessage(from, { sticker: stickerBuffer });
             } catch (e) {
+                console.error(e);
                 await sock.sendMessage(from, { text: '❌ Gagal membuat stiker.' });
             }
         }
@@ -138,6 +137,7 @@ async function handleMessage(sock, m) {
                 const buffer = await image.getBufferAsync(Jimp.MIME_WEBP);
                 await sock.sendMessage(from, { sticker: buffer });
             } catch (e) {
+                console.error(e);
                 await sock.sendMessage(from, { text: '❌ Gagal membuat brat sticker.' });
             }
         }
@@ -348,7 +348,6 @@ async function startBot() {
         browser: Browsers.macOS('Chrome'),
     });
 
-    // Pairing Code
     if (!auth.state.creds.registered) {
         const phone = await question('📱 Masukkan nomor WhatsApp (contoh: 6281234567890): ');
         rl.close();
